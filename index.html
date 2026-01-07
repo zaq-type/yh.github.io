@@ -106,8 +106,13 @@ async function initMIDI() {
 // ===== ボタン操作（重要）=====
 document.getElementById("startButton").onclick = async () => {
   audioContext = new (window.AudioContext || window.webkitAudioContext)();
+
+  // ★これを必ず入れる
+  await audioContext.resume();
+  
   await loadSample();
   await initMIDI();
+
   log("準備完了。ノートを押してください");
 };
 </script>
