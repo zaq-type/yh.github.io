@@ -192,6 +192,9 @@ document.getElementById("startButton").onclick = async () => {
   status.textContent =
     "準備完了\nMIDI:\n" + inputs.map(i => i.name).join("\n");
 };
+
+  const res = await fetch(url);
+console.log(note, res.status, res.headers.get("content-type"));
 </script>
 
 </body>
