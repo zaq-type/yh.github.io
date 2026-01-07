@@ -1,11 +1,116 @@
 <!DOCTYPE html>
 <html lang="ja">
 <head>
-  <meta charset="UTF-8">
-  <title>MIDI Practice</title>
+  <meta charset="UTF-8" />
+  <title>MIDI Minimal Sampler</title>
+  <style>
+    body {
+      font-family: sans-serif;
+      background: #111;
+      color: #eee;
+      padding: 20px;
+    }
+    button {
+      font-size: 16px;
+      padding: 10px 16px;
+      margin-bottom: 16px;
+    }
+    .log {
+      font-size: 14px;
+      line-height: 1.6;
+      white-space: pre-wrap;
+      background: #222;
+      padding: 10px;
+    }
+  </style>
 </head>
 <body>
-  <h1>GitHub Pages OK</h1>
-  <p>このページが見えていれば成功です。</p>
+
+  <h1>MIDI Minimal Sampler</h1>
+
+  <button id="startButton">🎹 MIDIを有効化</button>
+
+  <div class="log" id="log">
+    MIDI未接続
+  </div>
+
+<script>
+let audioContext;
+let sampleBuffer = null;
+
+// ===== ログ表示 =====
+const log = (msg) => {
+  document.getElementById("log").textContent = msg;
+};
+
+// ===== サンプル音源（テスト用）=====
+// 自分で wav を置く場合は URL を差し替える
+const SAMPLE_URL =
+  "https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio-basics/techno.wav";
+
+// ===== サンプル読み込み =====
+async function loadSample() {
+  const res = await fetch(SAMPLE_URL);
+  const arrayBuffer = await res.arrayBuffer();
+  sampleBuffer = await audioContext.decodeAudioData(arrayBuffer);
+}
+
+// ===== 音を鳴らす =====
+function playSample(velocity = 100) {
+  if (!sampleBuffer) return;
+
+  const source = audioContext.createBufferSource();
+  const gain = audioContext.createGain();
+
+  gain.gain.value = velocity / 127;
+
+  source.buffer = sampleBuffer;
+  source.connect(gain).connect(audioContext.destination);
+  source.start();
+}
+
+// ===== MIDI処理 =====
+function onMIDIMessage(event) {
+  const [status, note, velocity] = event.data;
+
+  const isNoteOn = status === 144 && velocity > 0;
+
+  if (isNoteOn) {
+    log(`Note ON : ${note}  Velocity : ${velocity}`);
+    playSample(velocity);
+  }
+}
+
+// ===== MIDI初期化 =====
+async function initMIDI() {
+  if (!navigator.requestMIDIAccess) {
+    log("Web MIDI API 非対応ブラウザです");
+    return;
+  }
+
+  const midi = await navigator.requestMIDIAccess();
+  const inputs = [...midi.inputs.values()];
+
+  if (inputs.length === 0) {
+    log("MIDIデバイスが見つかりません");
+    return;
+  }
+
+  inputs.forEach(input => {
+    input.onmidimessage = onMIDIMessage;
+  });
+
+  log("MIDI接続完了:\n" + inputs.map(i => i.name).join("\n"));
+}
+
+// ===== ボタン操作（重要）=====
+document.getElementById("startButton").onclick = async () => {
+  audioContext = new (window.AudioContext || window.webkitAudioContext)();
+  await loadSample();
+  await initMIDI();
+  log("準備完了。ノートを押してください");
+};
+</script>
+
 </body>
 </html>
