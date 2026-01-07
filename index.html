@@ -116,9 +116,15 @@ for (const note in SAMPLE_CONFIG) {
 /* ===== サンプル読み込み ===== */
 async function loadSamples() {
   for (const note in SAMPLE_CONFIG) {
-    const res = await fetch(SAMPLE_CONFIG[note].url);
-    const arrayBuffer = await res.arrayBuffer();
-    buffers[note] = await audioContext.decodeAudioData(arrayBuffer);
+    try {
+      const res = await fetch(SAMPLE_CONFIG[note].url);
+      const arrayBuffer = await res.arrayBuffer();
+      buffers[note] = await audioContext.decodeAudioData(arrayBuffer);
+      console.log("loaded:", note);
+    } catch (e) {
+      console.error("FAILED:", note, e);
+      status.textContent += `\n❌ ${SAMPLE_CONFIG[note].name} 読み込み失敗`;
+    }
   }
 }
 
