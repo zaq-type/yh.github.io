@@ -66,7 +66,10 @@ const SAMPLE_CONFIG = {
   36: {
     name: "Timpani",
     url: "https://pub-05a066d1e7ac452fa9f7a1247862675b.r2.dev/lineapp_end_16k.wav",
-    mode: "oneshot"
+    
+  const res = await fetch(url);
+console.log(note, res.status, res.headers.get("content-type"));
+  mode: "oneshot"
   },
   38: {
     name: "Low Strings",
@@ -193,8 +196,6 @@ document.getElementById("startButton").onclick = async () => {
     "準備完了\nMIDI:\n" + inputs.map(i => i.name).join("\n");
 };
 
-  const res = await fetch(url);
-console.log(note, res.status, res.headers.get("content-type"));
 </script>
 
 </body>
