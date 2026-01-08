@@ -61,50 +61,27 @@ button {
 <div class="pads" id="pads"></div>
 
 <script>
-/* ===== 設定ここだけ触る ===== */
+/* ===== 設定 ===== */
 const SAMPLE_CONFIG = {
-  36: {
-    name: "Timpani",
-    url: "https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio-basics/techno.wav",
-    mode: "oneshot"
-  },
-  38: {
-    name: "Low Strings",
-    url: "https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio-basics/techno.wav",
-    mode: "gate"
-  },
-  40: {
-    name: "Brass Hit",
-    url: "https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio-basics/techno.wav",
-    mode: "oneshot"
-  },
-  41: {
-    name: "String Pad",
-    url: "https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio-basics/techno.wav",
-    mode: "gate"
-  },
-  43: {
-    name: "FX Perc",
-    url: "https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio-basics/techno.wav",
-    mode: "oneshot"
-  },
-  45: {
-    name: "Noise Bed",
-    url: "https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio-basics/techno.wav",
-    mode: "gate"
-  }
+  36: { name: "Timpani",      url: "https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio-basics/techno.wav", mode: "oneshot" },
+  38: { name: "Low Strings",  url: "https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio-basics/techno.wav", mode: "gate" },
+  40: { name: "Brass Hit",    url: "https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio-basics/techno.wav", mode: "oneshot" },
+  41: { name: "String Pad",   url: "https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio-basics/techno.wav", mode: "gate" },
+  43: { name: "FX Perc",      url: "https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio-basics/techno.wav", mode: "oneshot" },
+  45: { name: "Noise Bed",    url: "https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio-basics/techno.wav", mode: "gate" }
 };
-/* ============================ */
 
-let audioContext;
+/* ===== Audio ===== */
+const audioContext = new AudioContext();
 const buffers = {};
 const activeSources = {};
-const pads = {};
 
+/* ===== UI ===== */
 const status = document.getElementById("status");
 const padContainer = document.getElementById("pads");
+const pads = {};
 
-/* ===== UI生成 ===== */
+/* UI生成 */
 for (const note in SAMPLE_CONFIG) {
   const div = document.createElement("div");
   div.className = "pad";
@@ -116,20 +93,20 @@ for (const note in SAMPLE_CONFIG) {
 /* ===== サンプル読み込み ===== */
 async function loadSamples() {
   for (const note in SAMPLE_CONFIG) {
-    try {
-      const res = await fetch(SAMPLE_CONFIG[note].url);
-      const arrayBuffer = await res.arrayBuffer();
-      buffers[note] = await audioContext.decodeAudioData(arrayBuffer);
-      console.log("loaded:", note);
-    } catch (e) {
-      console.error("FAILED:", note, e);
-      status.textContent += `\n❌ ${SAMPLE_CONFIG[note].name} 読み込み失敗`;
-    }
+    const res = await fetch(SAMPLE_CONFIG[note].url);
+    const arrayBuffer = await res.arrayBuffer();
+    buffers[note] = await audioContext.decodeAudioData(arrayBuffer);
+    console.log("loaded:", note);
   }
 }
 
 /* ===== Note ON ===== */
-function noteOn(note, velocity) {
+async function noteOn(note, velocity) {
+  if (audioContext.state !== "running") {
+    await audioContext.resume();
+    console.log("AudioContext resumed");
+  }
+
   const config = SAMPLE_CONFIG[note];
   if (!config || !buffers[note]) return;
 
@@ -152,10 +129,7 @@ function noteOn(note, velocity) {
 
 /* ===== Note OFF ===== */
 function noteOff(note) {
-  const config = SAMPLE_CONFIG[note];
-  if (!config) return;
-
-  if (config.mode === "gate" && activeSources[note]) {
+  if (activeSources[note]) {
     activeSources[note].stop();
     delete activeSources[note];
     pads[note]?.classList.remove("active");
@@ -165,18 +139,17 @@ function noteOff(note) {
 /* ===== MIDI ===== */
 function onMIDIMessage(e) {
   const [statusByte, note, velocity] = e.data;
-  const command = statusByte & 0xf0;
+  const cmd = statusByte & 0xf0;
 
-  if (command === 0x90 && velocity > 0) {
+  if (cmd === 0x90 && velocity > 0) {
     noteOn(note, velocity);
-  } else if (command === 0x80 || (command === 0x90 && velocity === 0)) {
+  } else if (cmd === 0x80 || (cmd === 0x90 && velocity === 0)) {
     noteOff(note);
   }
 }
 
 /* ===== 初期化 ===== */
 document.getElementById("startButton").onclick = async () => {
-  audioContext = new AudioContext();
   await audioContext.resume();
 
   status.textContent = "音源読み込み中...";
@@ -184,15 +157,10 @@ document.getElementById("startButton").onclick = async () => {
 
   const midi = await navigator.requestMIDIAccess();
   const inputs = [...midi.inputs.values()];
+  inputs.forEach(i => i.onmidimessage = onMIDIMessage);
 
-  inputs.forEach(input => {
-    input.onmidimessage = onMIDIMessage;
-  });
-
-  status.textContent =
-    "準備完了\nMIDI:\n" + inputs.map(i => i.name).join("\n");
+  status.textContent = "準備完了\nMIDI:\n" + inputs.map(i => i.name).join("\n");
 };
-
 </script>
 
 </body>
