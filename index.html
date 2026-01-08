@@ -1,167 +1,221 @@
 <!DOCTYPE html>
 <html lang="ja">
+
 <head>
-<meta charset="UTF-8">
-<title>MIDI 6 Sampler</title>
+    <meta charset="UTF-8">
+    <title>MIDI Sampler - Debug Mode</title>
+    <style>
+        body {
+            background: #111;
+            color: #eee;
+            font-family: sans-serif;
+            text-align: center;
+            padding: 20px;
+        }
 
-<style>
-body {
-  background: #111;
-  color: #eee;
-  font-family: system-ui, sans-serif;
-  padding: 20px;
-}
+        button {
+            font-size: 18px;
+            padding: 15px 30px;
+            cursor: pointer;
+            background: #0af;
+            border: none;
+            border-radius: 5px;
+            color: #000;
+            font-weight: bold;
+        }
 
-button {
-  font-size: 16px;
-  padding: 10px 16px;
-  margin-bottom: 16px;
-}
+        button:disabled {
+            background: #444;
+            color: #888;
+        }
 
-#status {
-  font-size: 14px;
-  margin-bottom: 20px;
-  white-space: pre-line;
-}
+        #status {
+            margin: 20px;
+            padding: 10px;
+            border: 1px dashed #444;
+            min-height: 50px;
+            background: #222;
+        }
 
-.pads {
-  display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 12px;
-  max-width: 360px;
-}
+        #midi-monitor {
+            color: #0f0;
+            font-family: monospace;
+            margin-bottom: 20px;
+            font-size: 1.2rem;
+        }
 
-.pad {
-  background: #222;
-  border: 2px solid #444;
-  height: 100px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  user-select: none;
-  transition: background 0.05s, border-color 0.05s;
-}
+        .pads {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 15px;
+            max-width: 450px;
+            margin: 0 auto;
+        }
 
-.pad.active {
-  background: #0af;
-  border-color: #9df;
-  color: #000;
-}
-</style>
+        .pad {
+            background: #333;
+            border: 3px solid #555;
+            height: 120px;
+            border-radius: 10px;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            transition: 0.1s;
+        }
+
+        .pad.active {
+            background: #fff;
+            border-color: #0af;
+            color: #000;
+            transform: scale(0.95);
+            box-shadow: 0 0 20px #0af;
+        }
+
+        .note-num {
+            font-size: 0.8rem;
+            opacity: 0.6;
+        }
+    </style>
 </head>
 
 <body>
 
-<h1>MIDI Sampler (Practice)</h1>
+    <h1>MIDI Sampler (Debug Mode)</h1>
 
-<button id="startButton">🎹 MIDI / Audio 有効化</button>
-<div id="status">未接続</div>
+    <button id="startButton">1. サウンドとMIDIを有効化</button>
 
-<div class="pads" id="pads"></div>
+    <div id="status">ボタンを押してください</div>
 
-<script>
-/* ===== 設定 ===== */
-const SAMPLE_CONFIG = {
-  36: { name: "Timpani",      url: "https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio-basics/techno.wav", mode: "oneshot" },
-  38: { name: "Low Strings",  url: "https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio-basics/techno.wav", mode: "gate" },
-  40: { name: "Brass Hit",    url: "https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio-basics/techno.wav", mode: "oneshot" },
-  41: { name: "String Pad",   url: "https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio-basics/techno.wav", mode: "gate" },
-  43: { name: "FX Perc",      url: "https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio-basics/techno.wav", mode: "oneshot" },
-  45: { name: "Noise Bed",    url: "https://cdn.jsdelivr.net/gh/mdn/webaudio-examples/audio-basics/techno.wav", mode: "gate" }
-};
+    <div id="midi-monitor">MIDI信号を待機中... (鍵盤を弾いてください)</div>
 
-/* ===== Audio ===== */
-const audioContext = new AudioContext();
-const buffers = {};
-const activeSources = {};
+    <div class="pads" id="pads"></div>
 
-/* ===== UI ===== */
-const status = document.getElementById("status");
-const padContainer = document.getElementById("pads");
-const pads = {};
+    <script>
+        let audioContext;
+        const buffers = {};
+        const activeSources = {};
+        const statusEl = document.getElementById("status");
+        const monitorEl = document.getElementById("midi-monitor");
 
-/* UI生成 */
-for (const note in SAMPLE_CONFIG) {
-  const div = document.createElement("div");
-  div.className = "pad";
-  div.innerHTML = `<strong>${SAMPLE_CONFIG[note].name}</strong><div>Note ${note}</div>`;
-  padContainer.appendChild(div);
-  pads[note] = div;
-}
+        // サンプルの設定
+        const SAMPLE_CONFIG = {
+            36: { name: "C1 (Timpani)", url: "https://raw.githubusercontent.com/zaq-type/yh.github.io/main/le1.wav", mode: "oneshot" },
+            38: { name: "D1 (Strings)", url: "https://raw.githubusercontent.com/zaq-type/yh.github.io/main/le1.wav", mode: "gate" },
+            40: { name: "E1 (Brass)", url: "https://raw.githubusercontent.com/zaq-type/yh.github.io/main/le2.wav", mode: "oneshot" },
+            41: { name: "F1 (Pad)", url: "https://raw.githubusercontent.com/zaq-type/yh.github.io/main/le2.wav", mode: "gate" },
+            43: { name: "G1 (FX)", url: "https://raw.githubusercontent.com/zaq-type/yh.github.io/main/le2.wav", mode: "oneshot" },
+            45: { name: "A1 (Noise)", url: "https://raw.githubusercontent.com/zaq-type/yh.github.io/main/le2.wav", mode: "gate" }
+        };
 
-/* ===== サンプル読み込み ===== */
-async function loadSamples() {
-  for (const note in SAMPLE_CONFIG) {
-    const res = await fetch(SAMPLE_CONFIG[note].url);
-    const arrayBuffer = await res.arrayBuffer();
-    buffers[note] = await audioContext.decodeAudioData(arrayBuffer);
-    console.log("loaded:", note);
-  }
-}
+        // UIの生成
+        const padsUI = {};
+        for (const note in SAMPLE_CONFIG) {
+            const div = document.createElement("div");
+            div.className = "pad";
+            div.id = "pad-" + note;
+            div.innerHTML = `<strong>${SAMPLE_CONFIG[note].name}</strong><div class="note-num">Note: ${note}</div>`;
+            document.getElementById("pads").appendChild(div);
+            padsUI[note] = div;
+        }
 
-/* ===== Note ON ===== */
-async function noteOn(note, velocity) {
-  if (audioContext.state !== "running") {
-    await audioContext.resume();
-    console.log("AudioContext resumed");
-  }
+        // 音源の読み込み
+        async function loadSamples() {
+            for (const note in SAMPLE_CONFIG) {
+                try {
+                    const res = await fetch(SAMPLE_CONFIG[note].url);
+                    const arrayBuffer = await res.arrayBuffer();
+                    buffers[note] = await audioContext.decodeAudioData(arrayBuffer);
+                } catch (e) {
+                    console.error("Load error:", note, e);
+                }
+            }
+        }
 
-  const config = SAMPLE_CONFIG[note];
-  if (!config || !buffers[note]) return;
+        // 再生
+        function playSound(note, velocity) {
+            if (!buffers[note]) return;
 
-  const source = audioContext.createBufferSource();
-  const gain = audioContext.createGain();
+            // 既存の音を停止（gate/連打用）
+            stopSound(note);
 
-  gain.gain.value = velocity / 127;
-  source.buffer = buffers[note];
-  source.connect(gain).connect(audioContext.destination);
-  source.start();
+            const source = audioContext.createBufferSource();
+            const gain = audioContext.createGain();
+            source.buffer = buffers[note];
+            gain.gain.value = velocity / 127;
 
-  pads[note]?.classList.add("active");
+            source.connect(gain).connect(audioContext.destination);
+            source.start(0);
 
-  if (config.mode === "gate") {
-    activeSources[note] = source;
-  } else {
-    source.onended = () => pads[note]?.classList.remove("active");
-  }
-}
+            activeSources[note] = { source, gain };
+            padsUI[note].classList.add("active");
 
-/* ===== Note OFF ===== */
-function noteOff(note) {
-  if (activeSources[note]) {
-    activeSources[note].stop();
-    delete activeSources[note];
-    pads[note]?.classList.remove("active");
-  }
-}
+            source.onended = () => {
+                if (activeSources[note]?.source === source) {
+                    padsUI[note].classList.remove("active");
+                }
+            };
+        }
 
-/* ===== MIDI ===== */
-function onMIDIMessage(e) {
-  const [statusByte, note, velocity] = e.data;
-  const cmd = statusByte & 0xf0;
+        // 停止
+        function stopSound(note) {
+            if (activeSources[note]) {
+                const { source, gain } = activeSources[note];
+                gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.1);
+                source.stop(audioContext.currentTime + 0.1);
+                delete activeSources[note];
+                padsUI[note].classList.remove("active");
+            }
+        }
 
-  if (cmd === 0x90 && velocity > 0) {
-    noteOn(note, velocity);
-  } else if (cmd === 0x80 || (cmd === 0x90 && velocity === 0)) {
-    noteOff(note);
-  }
-}
+        // MIDIメッセージ受信
+        function handleMidi(e) {
+            const [status, note, velocity] = e.data;
+            const cmd = status & 0xf0;
 
-/* ===== 初期化 ===== */
-document.getElementById("startButton").onclick = async () => {
-  await audioContext.resume();
+            // モニター表示を更新（ここが重要！）
+            monitorEl.textContent = `受信中: CMD=${cmd.toString(16)}, NOTE=${note}, VEL=${velocity}`;
 
-  status.textContent = "音源読み込み中...";
-  await loadSamples();
+            if (cmd === 0x90 && velocity > 0) {
+                if (SAMPLE_CONFIG[note]) {
+                    playSound(note, velocity);
+                } else {
+                    monitorEl.style.color = "orange";
+                    monitorEl.textContent += " (未設定のノートです)";
+                }
+            } else if (cmd === 0x80 || (cmd === 0x90 && velocity === 0)) {
+                if (SAMPLE_CONFIG[note] && SAMPLE_CONFIG[note].mode === "gate") {
+                    stopSound(note);
+                }
+            }
+        }
 
-  const midi = await navigator.requestMIDIAccess();
-  const inputs = [...midi.inputs.values()];
-  inputs.forEach(i => i.onmidimessage = onMIDIMessage);
+        // 開始ボタン
+        document.getElementById("startButton").onclick = async function () {
+            this.disabled = true;
+            statusEl.textContent = "初期化中...";
 
-  status.textContent = "準備完了\nMIDI:\n" + inputs.map(i => i.name).join("\n");
-};
-</script>
+            try {
+                audioContext = new (window.AudioContext || window.webkitAudioContext)();
+                await loadSamples();
 
+                const midi = await navigator.requestMIDIAccess();
+                const inputs = [...midi.inputs.values()];
+
+                if (inputs.length === 0) {
+                    statusEl.textContent = "MIDIデバイスが見つかりません。接続を確認して再読み込みしてください。";
+                    this.disabled = false;
+                } else {
+                    inputs.forEach(input => input.onmidimessage = handleMidi);
+                    statusEl.textContent = "接続済み: " + inputs.map(i => i.name).join(", ");
+                    monitorEl.textContent = "鍵盤またはパッドを叩いてください...";
+                }
+            } catch (err) {
+                statusEl.textContent = "エラー: " + err;
+                this.disabled = false;
+            }
+        };
+    </script>
 </body>
+
 </html>
