@@ -3,218 +3,369 @@
 
 <head>
     <meta charset="UTF-8">
-    <title>MIDI Sampler - Debug Mode</title>
+    <title>Multi-Track MIDI Sampler DAW</title>
+    <script src="https://unpkg.com/wavesurfer.js@7"></script>
     <style>
         body {
             background: #111;
             color: #eee;
             font-family: sans-serif;
-            text-align: center;
             padding: 20px;
+            text-align: center;
         }
 
-        button {
-            font-size: 18px;
-            padding: 15px 30px;
-            cursor: pointer;
+        .container {
+            max-width: 1200px;
+            margin: 0 auto;
+            position: relative;
+        }
+
+        #initButton {
             background: #0af;
-            border: none;
-            border-radius: 5px;
             color: #000;
+            border: none;
+            padding: 25px 50px;
+            font-size: 22px;
+            font-weight: bold;
+            cursor: pointer;
+            border-radius: 8px;
+            margin: 40px auto;
+            display: block;
+            box-shadow: 0 0 25px rgba(0, 170, 255, 0.5);
+            transition: 0.3s;
+        }
+
+        #initButton.hidden {
+            display: none;
+        }
+
+        #player-section {
+            background: #222;
+            border: 1px solid #444;
+            padding: 20px;
+            border-radius: 12px;
+            margin-bottom: 20px;
+            display: none;
+        }
+
+        .track-label {
+            text-align: left;
+            font-size: 13px;
+            color: #0af;
+            margin: 12px 0 5px 0;
             font-weight: bold;
         }
 
-        button:disabled {
-            background: #444;
-            color: #888;
+        .waveform-outer {
+            transition: 0.4s ease;
+            filter: grayscale(1);
+            opacity: 0.2;
+            margin-bottom: 10px;
         }
 
-        #status {
-            margin: 20px;
-            padding: 10px;
-            border: 1px dashed #444;
-            min-height: 50px;
-            background: #222;
+        .waveform-outer.active {
+            filter: grayscale(0);
+            opacity: 1;
+            transform: scale(1.01);
         }
 
-        #midi-monitor {
-            color: #0f0;
-            font-family: monospace;
-            margin-bottom: 20px;
-            font-size: 1.2rem;
+        .waveform-container {
+            background: #151515;
+            height: 100px;
+            cursor: ew-resize;
+            border-radius: 4px;
+            overflow: hidden;
         }
 
+        .controls {
+            display: flex;
+            gap: 20px;
+            justify-content: center;
+            margin: 25px 0;
+            flex-wrap: wrap;
+            align-items: center;
+        }
+
+        .mode-selector {
+            display: flex;
+            justify-content: center;
+            gap: 8px;
+            margin-bottom: 15px;
+        }
+
+        .mode-btn {
+            background: #333;
+            color: #ccc;
+            border: 1px solid #555;
+            padding: 10px 20px;
+            cursor: pointer;
+            border-radius: 6px;
+            font-weight: bold;
+        }
+
+        .mode-btn.active {
+            background: #0af;
+            color: #000;
+            border-color: #fff;
+        }
+
+        .zoom-controls {
+            font-size: 14px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            background: #333;
+            padding: 8px 20px;
+            border-radius: 30px;
+        }
+
+        #zoomSlider {
+            width: 400px;
+            cursor: pointer;
+        }
+
+        /* サンプラーセクション */
         .pads {
             display: grid;
             grid-template-columns: repeat(3, 1fr);
             gap: 15px;
-            max-width: 450px;
-            margin: 0 auto;
+            max-width: 800px;
+            margin: 30px auto;
+        }
+
+        .pad-unit {
+            background: #2a2a2a;
+            padding: 10px;
+            border-radius: 15px;
+            border: 1px solid #444;
         }
 
         .pad {
             background: #333;
-            border: 3px solid #555;
-            height: 120px;
+            border: 2px solid #555;
+            height: 80px;
             border-radius: 10px;
             display: flex;
             flex-direction: column;
             justify-content: center;
             align-items: center;
+            cursor: pointer;
+            user-select: none;
             transition: 0.1s;
+            width: 100%;
+            margin-bottom: 8px;
         }
 
-        .pad.active {
-            background: #fff;
-            border-color: #0af;
+        /* 再生中の発光スタイル */
+        .pad.playing {
+            background: #0af !important;
             color: #000;
-            transform: scale(0.95);
             box-shadow: 0 0 20px #0af;
+            border-color: #fff;
+        }
+
+        .mode-switch {
+            font-size: 11px;
+            display: flex;
+            justify-content: center;
+            gap: 5px;
+        }
+
+        .mode-switch label {
+            cursor: pointer;
+            padding: 3px 8px;
+            background: #444;
+            border-radius: 4px;
+        }
+
+        .mode-switch input:checked+span {
+            color: #0af;
+            font-weight: bold;
+        }
+
+        .mode-switch input {
+            display: none;
         }
 
         .note-num {
-            font-size: 0.8rem;
-            opacity: 0.6;
+            font-size: 0.75rem;
+            opacity: 0.5;
+            margin-top: 5px;
         }
     </style>
 </head>
 
 <body>
+    <div class="container">
+        <h1>Multi-Track Audio & MIDI Sampler</h1>
+        <button id="initButton">システムを有効化 (Audio/MIDI)</button>
 
-    <h1>MIDI Sampler (Debug Mode)</h1>
+        <div id="player-section">
+            <div class="mode-selector">
+                <button class="mode-btn active" data-mode="full">Full Mix</button>
+                <button class="mode-btn" data-mode="solo">Solo</button>
+                <button class="mode-btn" data-mode="performance">Performance</button>
+            </div>
 
-    <button id="startButton">1. サウンドとMIDIを有効化</button>
+            <div class="track-label">Sync Timeline (Drag to Seek)</div>
+            <div id="outer-full" class="waveform-outer">
+                <div id="waveform-full" class="waveform-container"></div>
+            </div>
+            <div id="outer-solo" class="waveform-outer">
+                <div id="waveform-solo" class="waveform-container"></div>
+            </div>
+            <div id="outer-performance" class="waveform-outer">
+                <div id="waveform-performance" class="waveform-container"></div>
+            </div>
 
-    <div id="status">ボタンを押してください</div>
+            <div class="controls">
+                <button id="playPauseBtn" class="mode-btn">再生 / 一時停止</button>
+                <button id="stopBtn" class="mode-btn">頭出し</button>
+                <div class="zoom-controls">
+                    <span>全体</span>
+                    <input type="range" id="zoomSlider" min="0" max="500" value="20">
+                    <span>拡大</span>
+                </div>
+            </div>
 
-    <div id="midi-monitor">MIDI信号を待機中... (鍵盤を弾いてください)</div>
-
-    <div class="pads" id="pads"></div>
+            <div id="midi-monitor" style="color:#0f0; font-family:monospace; margin-top:10px; height: 1.2em;">MIDI In
+                Wait...</div>
+            <div class="pads" id="pads"></div>
+        </div>
+    </div>
 
     <script>
-        let audioContext;
+        const BASE_URL = "https://raw.githubusercontent.com/zaq-type/yh.github.io/main/";
+        const TRACK_NAMES = { full: "arpgame", solo: "arp_bgm1", performance: "arpgame" };
+        const SAMPLE_NAMES = { 36: "byakkoya01", 38: "byakkoya02", 40: "byakkoya03", 41: "byakkoya04", 43: "byakkoya05", 45: "byakkoya06" };
+
+        let audioCtx;
         const buffers = {};
-        const activeSources = {};
-        const statusEl = document.getElementById("status");
-        const monitorEl = document.getElementById("midi-monitor");
+        const wavesurfers = {};
+        const activeSources = {}; // 再生中のSourceを管理
 
-        // サンプルの設定
-        const SAMPLE_CONFIG = {
-            36: { name: "C1 (Timpani)", url: "https://raw.githubusercontent.com/zaq-type/yh.github.io/main/byakkoya01.wav", mode: "oneshot" },
-            38: { name: "D1 (Strings)", url: "https://raw.githubusercontent.com/zaq-type/yh.github.io/main/byakkoya02.wav", mode: "oneshot" },
-            40: { name: "E1 (Brass)", url: "https://raw.githubusercontent.com/zaq-type/yh.github.io/main/byakkoya03.wav", mode: "oneshot" },
-            41: { name: "F1 (Pad)", url: "https://raw.githubusercontent.com/zaq-type/yh.github.io/main/byakkoya04.wav", mode: "oneshot" },
-            43: { name: "G1 (FX)", url: "https://raw.githubusercontent.com/zaq-type/yh.github.io/main/byakkoya05.wav", mode: "oneshot" },
-            45: { name: "A1 (Noise)", url: "https://raw.githubusercontent.com/zaq-type/yh.github.io/main/byakkoya06.wav", mode: "oneshot" }
-        };
-
-        // UIの生成
-        const padsUI = {};
-        for (const note in SAMPLE_CONFIG) {
-            const div = document.createElement("div");
-            div.className = "pad";
-            div.id = "pad-" + note;
-            div.innerHTML = `<strong>${SAMPLE_CONFIG[note].name}</strong><div class="note-num">Note: ${note}</div>`;
-            document.getElementById("pads").appendChild(div);
-            padsUI[note] = div;
-        }
-
-        // 音源の読み込み
-        async function loadSamples() {
-            for (const note in SAMPLE_CONFIG) {
-                try {
-                    const res = await fetch(SAMPLE_CONFIG[note].url);
-                    const arrayBuffer = await res.arrayBuffer();
-                    buffers[note] = await audioContext.decodeAudioData(arrayBuffer);
-                } catch (e) {
-                    console.error("Load error:", note, e);
-                }
+        async function getValidUrl(name) {
+            for (const ext of ['.wav', '.mp3']) {
+                const url = `${BASE_URL}${name}${ext}`;
+                try { const res = await fetch(url, { method: 'HEAD' }); if (res.ok) return url; } catch (e) { }
             }
+            return `${BASE_URL}${name}.wav`;
         }
 
-        // 再生
-        function playSound(note, velocity) {
-            if (!buffers[note]) return;
+        function initWavesurfer(id, url) {
+            const ws = WaveSurfer.create({ container: `#waveform-${id}`, waveColor: '#666', progressColor: id === 'full' ? '#0af' : (id === 'solo' ? '#f0f' : '#0f0'), cursorColor: '#fff', height: 100, url: url, interact: true, minPxPerSec: 20 });
+            ws.on('interaction', () => { const time = ws.getCurrentTime(); Object.values(wavesurfers).forEach(o => { if (o !== ws) o.setTime(time); }); });
+            return ws;
+        }
 
-            // 既存の音を停止（gate/連打用）
-            stopSound(note);
+        function playSample(note, velocity) {
+            if (!buffers[note] || !audioCtx) return;
 
-            const source = audioContext.createBufferSource();
-            const gain = audioContext.createGain();
+            // 既存の音があれば停止（ゲート/連打対策）
+            stopSample(note);
+
+            const source = audioCtx.createBufferSource();
             source.buffer = buffers[note];
+            const gain = audioCtx.createGain();
             gain.gain.value = velocity / 127;
-
-            source.connect(gain).connect(audioContext.destination);
-            source.start(0);
+            source.connect(gain).connect(audioCtx.destination);
 
             activeSources[note] = { source, gain };
-            padsUI[note].classList.add("active");
+            source.start(0);
 
+            // 視覚フィードバック（光る）
+            const pad = document.getElementById(`pad-${note}`);
+            pad.classList.add("playing");
+
+            // 再生終了時に光を消す
             source.onended = () => {
-                if (activeSources[note]?.source === source) {
-                    padsUI[note].classList.remove("active");
-                }
+                pad.classList.remove("playing");
+                delete activeSources[note];
             };
         }
 
-        // 停止
-        function stopSound(note) {
+        function stopSample(note) {
             if (activeSources[note]) {
-                const { source, gain } = activeSources[note];
-                gain.gain.exponentialRampToValueAtTime(0.001, audioContext.currentTime + 0.1);
-                source.stop(audioContext.currentTime + 0.1);
+                activeSources[note].source.stop();
                 delete activeSources[note];
-                padsUI[note].classList.remove("active");
             }
         }
 
-        // MIDIメッセージ受信
-        function handleMidi(e) {
-            const [status, note, velocity] = e.data;
-            const cmd = status & 0xf0;
+        document.getElementById("initButton").onclick = async function () {
+            this.textContent = "Loading...";
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
 
-            // モニター表示を更新（ここが重要！）
-            monitorEl.textContent = `受信中: CMD=${cmd.toString(16)}, NOTE=${note}, VEL=${velocity}`;
-
-            if (cmd === 0x90 && velocity > 0) {
-                if (SAMPLE_CONFIG[note]) {
-                    playSound(note, velocity);
-                } else {
-                    monitorEl.style.color = "orange";
-                    monitorEl.textContent += " (未設定のノートです)";
-                }
-            } else if (cmd === 0x80 || (cmd === 0x90 && velocity === 0)) {
-                if (SAMPLE_CONFIG[note] && SAMPLE_CONFIG[note].mode === "gate") {
-                    stopSound(note);
-                }
+            for (const key in TRACK_NAMES) {
+                const url = await getValidUrl(TRACK_NAMES[key]);
+                wavesurfers[key] = initWavesurfer(key, url);
             }
-        }
 
-        // 開始ボタン
-        document.getElementById("startButton").onclick = async function () {
-            this.disabled = true;
-            statusEl.textContent = "初期化中...";
+            const padsContainer = document.getElementById("pads");
+            for (const note in SAMPLE_NAMES) {
+                const url = await getValidUrl(SAMPLE_NAMES[note]);
+
+                const unit = document.createElement("div");
+                unit.className = "pad-unit";
+                unit.innerHTML = `
+                    <div class="pad" id="pad-${note}"><strong>${SAMPLE_NAMES[note]}</strong><div class="note-num">${note}</div></div>
+                    <div class="mode-switch">
+                        <label><input type="radio" name="m-${note}" value="one" checked><span>OneShot</span></label>
+                        <label><input type="radio" name="m-${note}" value="gate"><span>Gate</span></label>
+                    </div>`;
+
+                const pad = unit.querySelector(".pad");
+                pad.addEventListener('mousedown', () => playSample(note, 100));
+                window.addEventListener('mouseup', () => {
+                    const isGate = unit.querySelector(`input[name="m-${note}"]:checked`).value === 'gate';
+                    if (isGate) stopSample(note);
+                });
+
+                padsContainer.appendChild(unit);
+                const res = await fetch(url);
+                const ab = await res.arrayBuffer();
+                buffers[note] = await audioCtx.decodeAudioData(ab);
+            }
 
             try {
-                audioContext = new (window.AudioContext || window.webkitAudioContext)();
-                await loadSamples();
-
                 const midi = await navigator.requestMIDIAccess();
-                const inputs = [...midi.inputs.values()];
+                [...midi.inputs.values()].forEach(input => {
+                    input.onmidimessage = (e) => {
+                        const [s, n, v] = e.data;
+                        const cmd = s & 0xf0;
+                        if (cmd === 0x90 && v > 0) {
+                            playSample(n, v);
+                        } else if (cmd === 0x80 || (cmd === 0x90 && v === 0)) {
+                            const unit = document.getElementById(`pad-${n}`)?.parentElement;
+                            if (unit && unit.querySelector(`input[name="m-${n}"]:checked`).value === 'gate') stopSample(n);
+                        }
+                    };
+                });
+            } catch (e) { }
 
-                if (inputs.length === 0) {
-                    statusEl.textContent = "MIDIデバイスが見つかりません。接続を確認して再読み込みしてください。";
-                    this.disabled = false;
-                } else {
-                    inputs.forEach(input => input.onmidimessage = handleMidi);
-                    statusEl.textContent = "接続済み: " + inputs.map(i => i.name).join(", ");
-                    monitorEl.textContent = "鍵盤またはパッドを叩いてください...";
-                }
-            } catch (err) {
-                statusEl.textContent = "エラー: " + err;
-                this.disabled = false;
-            }
+            this.classList.add("hidden");
+            document.getElementById("player-section").style.display = "block";
+            updateMuteState('full');
         };
+
+        document.getElementById("playPauseBtn").onclick = () => Object.values(wavesurfers).forEach(ws => ws.playPause());
+        document.getElementById("stopBtn").onclick = () => Object.values(wavesurfers).forEach(ws => { ws.stop(); ws.setTime(0); });
+        document.getElementById("zoomSlider").oninput = (e) => Object.values(wavesurfers).forEach(ws => ws.zoom(parseFloat(e.target.value)));
+
+        function updateMuteState(activeMode) {
+            Object.keys(wavesurfers).forEach(mode => {
+                const isSelected = mode === activeMode;
+                wavesurfers[mode].setMuted(!isSelected);
+                document.getElementById(`outer-${mode}`).classList.toggle('active', isSelected);
+            });
+        }
+
+        document.querySelectorAll(".mode-btn[data-mode]").forEach(btn => {
+            btn.onclick = () => {
+                document.querySelectorAll(".mode-btn").forEach(b => b.classList.remove("active"));
+                btn.classList.add("active");
+                updateMuteState(btn.dataset.mode);
+            };
+        });
     </script>
 </body>
 
