@@ -122,8 +122,9 @@
             border-radius: 30px;
         }
 
+        /* スライダーをさらに長く調整 */
         #zoomSlider {
-            width: 400px;
+            width: 500px;
             cursor: pointer;
         }
 
@@ -187,12 +188,6 @@
         .mode-switch input {
             display: none;
         }
-
-        .note-num {
-            font-size: 0.75rem;
-            opacity: 0.5;
-            margin-top: 5px;
-        }
     </style>
 </head>
 
@@ -223,8 +218,8 @@
                 <button id="playPauseBtn" class="mode-btn">再生 / 一時停止</button>
                 <button id="stopBtn" class="mode-btn">頭出し</button>
                 <div class="zoom-controls">
-                    <span>全体</span>
-                    <input type="range" id="zoomSlider" min="1" max="1000" value="10">
+                    <span>全体表示</span>
+                    <input type="range" id="zoomSlider" min="1" max="1000" step="0.1" value="20">
                     <span>拡大</span>
                 </div>
             </div>
@@ -262,17 +257,77 @@
                 height: 100,
                 url: url,
                 interact: true,
-                fillParent: false, // 時間軸固定のため必須
-                minPxPerSec: 10
+                fillParent: false,
+                minPxPerSec: 1
             });
-
-            // 同期シーク
             ws.on('interaction', () => {
                 const time = ws.getCurrentTime();
                 Object.values(wavesurfers).forEach(o => { if (o !== ws) o.setTime(time); });
             });
             return ws;
         }
+
+        document.getElementById("initButton").onclick = async function () {
+            this.textContent = "Loading...";
+            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+
+            const wsPromises = [];
+            for (const key in TRACK_NAMES) {
+                const url = await getValidUrl(TRACK_NAMES[key]);
+                const ws = initWavesurfer(key, url);
+                wavesurfers[key] = ws;
+                wsPromises.push(new Promise(resolve => ws.once('ready', resolve)));
+            }
+
+            // 全音源ロード完了後のズーム計算
+            Promise.all(wsPromises).then(() => {
+                let maxDur = 0;
+                Object.values(wavesurfers).forEach(ws => {
+                    if (ws.getDuration() > maxDur) maxDur = ws.getDuration();
+                });
+
+                // コンテナの幅を取得（1200pxを基準にする）
+                const container = document.querySelector('.waveform-container');
+                const containerWidth = container.clientWidth || 1200;
+
+                // ピッタリ収まる倍率を計算。余裕を持たせるため0.98を掛ける
+                const minZoom = (containerWidth / maxDur) * 0.98;
+
+                const slider = document.getElementById("zoomSlider");
+                slider.min = minZoom;
+                slider.max = minZoom * 100; // 100倍まで
+                slider.value = minZoom;
+
+                Object.values(wavesurfers).forEach(ws => ws.zoom(minZoom));
+                document.getElementById('timeline-label').textContent = "Sync Timeline (Locked)";
+            });
+
+            // サンプラー部分
+            const padsContainer = document.getElementById("pads");
+            for (const note in SAMPLE_NAMES) {
+                const url = await getValidUrl(SAMPLE_NAMES[note]);
+                const unit = document.createElement("div");
+                unit.className = "pad-unit";
+                unit.innerHTML = `
+                    <div class="pad" id="pad-${note}"><strong>${SAMPLE_NAMES[note]}</strong></div>
+                    <div class="mode-switch">
+                        <label><input type="radio" name="m-${note}" value="one" checked><span>OneShot</span></label>
+                        <label><input type="radio" name="m-${note}" value="gate"><span>Gate</span></label>
+                    </div>`;
+                const pad = unit.querySelector(".pad");
+                pad.addEventListener('mousedown', () => playSample(note, 100));
+                window.addEventListener('mouseup', () => {
+                    const isGate = unit.querySelector(`input[name="m-${note}"]:checked`).value === 'gate';
+                    if (isGate) stopSample(note);
+                });
+                padsContainer.appendChild(unit);
+                fetch(url).then(r => r.arrayBuffer()).then(ab => audioCtx.decodeAudioData(ab)).then(b => buffers[note] = b);
+            }
+
+            this.classList.add("hidden");
+            document.getElementById("player-section").style.display = "block";
+            updateMuteState('full');
+        };
 
         function playSample(note, velocity) {
             if (!buffers[note] || !audioCtx) return;
@@ -290,94 +345,12 @@
         }
 
         function stopSample(note) {
-            if (activeSources[note]) {
-                try { activeSources[note].source.stop(); } catch (e) { }
-                delete activeSources[note];
-            }
+            if (activeSources[note]) { try { activeSources[note].source.stop(); } catch (e) { } delete activeSources[note]; }
         }
 
-        document.getElementById("initButton").onclick = async function () {
-            this.textContent = "Loading...";
-            audioCtx = new (window.AudioContext || window.webkitAudioContext)();
-
-            // 1. 波形の初期化とロード
-            const wsPromises = [];
-            for (const key in TRACK_NAMES) {
-                const url = await getValidUrl(TRACK_NAMES[key]);
-                const ws = initWavesurfer(key, url);
-                wavesurfers[key] = ws;
-                // ロード完了を待つプロミス
-                wsPromises.push(new Promise(resolve => ws.once('ready', resolve)));
-            }
-
-            // 2. 波形のロード完了後にズームの最小値を計算（一度きり）
-            Promise.all(wsPromises).then(() => {
-                let maxDur = 0;
-                Object.values(wavesurfers).forEach(ws => {
-                    if (ws.getDuration() > maxDur) maxDur = ws.getDuration();
-                });
-
-                const containerWidth = document.querySelector('.waveform-container').clientWidth;
-                const minZoom = containerWidth / maxDur; // 全体が収まるpx/sec
-
-                const slider = document.getElementById("zoomSlider");
-                slider.min = minZoom;
-                slider.max = 500; // 十分な拡大率
-                slider.value = minZoom;
-
-                // 初期ズーム適用
-                Object.values(wavesurfers).forEach(ws => ws.zoom(minZoom));
-                document.getElementById('timeline-label').textContent = "Sync Timeline (Locked to Scale)";
-            });
-
-            // 3. サンプラーのロード
-            const padsContainer = document.getElementById("pads");
-            for (const note in SAMPLE_NAMES) {
-                const url = await getValidUrl(SAMPLE_NAMES[note]);
-                const unit = document.createElement("div");
-                unit.className = "pad-unit";
-                unit.innerHTML = `
-                    <div class="pad" id="pad-${note}"><strong>${SAMPLE_NAMES[note]}</strong><div class="note-num">${note}</div></div>
-                    <div class="mode-switch">
-                        <label><input type="radio" name="m-${note}" value="one" checked><span>OneShot</span></label>
-                        <label><input type="radio" name="m-${note}" value="gate"><span>Gate</span></label>
-                    </div>`;
-                const pad = unit.querySelector(".pad");
-                pad.addEventListener('mousedown', () => playSample(note, 100));
-                window.addEventListener('mouseup', () => {
-                    const isGate = unit.querySelector(`input[name="m-${note}"]:checked`).value === 'gate';
-                    if (isGate) stopSample(note);
-                });
-                padsContainer.appendChild(unit);
-                fetch(url).then(r => r.arrayBuffer()).then(ab => audioCtx.decodeAudioData(ab)).then(b => buffers[note] = b);
-            }
-
-            // MIDI設定
-            try {
-                const midi = await navigator.requestMIDIAccess();
-                [...midi.inputs.values()].forEach(input => {
-                    input.onmidimessage = (e) => {
-                        const [s, n, v] = e.data;
-                        const cmd = s & 0xf0;
-                        if (cmd === 0x90 && v > 0) playSample(n, v);
-                        else if (cmd === 0x80 || (cmd === 0x90 && v === 0)) {
-                            const unit = document.getElementById(`pad-${n}`)?.parentElement;
-                            if (unit && unit.querySelector(`input[name="m-${n}"]:checked`).value === 'gate') stopSample(n);
-                        }
-                    };
-                });
-            } catch (e) { }
-
-            this.classList.add("hidden");
-            document.getElementById("player-section").style.display = "block";
-            updateMuteState('full');
-        };
-
-        // 再生・停止
         document.getElementById("playPauseBtn").onclick = () => Object.values(wavesurfers).forEach(ws => ws.playPause());
         document.getElementById("stopBtn").onclick = () => Object.values(wavesurfers).forEach(ws => { ws.stop(); ws.setTime(0); });
 
-        // スライダー連動
         document.getElementById("zoomSlider").addEventListener('input', (e) => {
             const val = parseFloat(e.target.value);
             Object.values(wavesurfers).forEach(ws => ws.zoom(val));
